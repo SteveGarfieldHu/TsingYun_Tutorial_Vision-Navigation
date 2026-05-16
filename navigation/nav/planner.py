@@ -23,7 +23,7 @@ def global_plan(
     goal : Tuple[float, float], (x, y)
         Goal position in the same coordinate system.
     costmap : np.ndarray, shape (rows, cols), dtype uint8
-        Per-cell traversal cost. Cells with cost >= 100 are treated as impassable
+        Per-cell traversal cost. Cells with large cost are treated as impassable
         (lethal). Otherwise the cell's cost is added to the step cost so the
         planner is biased away from inflated/dangerous areas.
 
