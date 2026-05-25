@@ -55,4 +55,39 @@ def local_plan(
       (such as MPPI) can be tried.
     """
     # TODO: Implement Pure Pursuit controller.
-    return 0.0, 0.0
+    if not global_path:
+        return 0.0, 0.0
+
+    x, y = current_pose
+
+    # 1. Find the closest waypoint on the path
+    dists_sq = np.array([(px - x) ** 2 + (py - y) ** 2 for px, py in global_path])
+    closest_idx = int(np.argmin(dists_sq))
+
+    # 2. Walk forward from closest waypoint to find the look-ahead point
+    Ld = 2.0  # look-ahead radius (grid units)
+    look_ahead = global_path[-1]  # default to goal
+    cum_dist = 0.0
+    for i in range(closest_idx, len(global_path) - 1):
+        x1, y1 = global_path[i]
+        x2, y2 = global_path[i + 1]
+        seg_len = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
+        if cum_dist + seg_len >= Ld:
+            frac = (Ld - cum_dist) / seg_len if seg_len > 1e-9 else 0.0
+            look_ahead = (x1 + frac * (x2 - x1), y1 + frac * (y2 - y1))
+            break
+        cum_dist += seg_len
+
+    # 3. Direction toward look-ahead point
+    dx = look_ahead[0] - x
+    dy = look_ahead[1] - y
+    dist = (dx * dx + dy * dy) ** 0.5
+    if dist < 1e-6:
+        return 0.0, 0.0
+
+    # 4. Speed: full speed far from goal, slow down when near
+    goal = global_path[-1]
+    remaining = ((goal[0] - x) ** 2 + (goal[1] - y) ** 2) ** 0.5
+    speed = min(max_speed, max(2.0, remaining))
+
+    return dx / dist * speed, dy / dist * speed

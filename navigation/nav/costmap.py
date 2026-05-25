@@ -6,6 +6,8 @@ from typing import Tuple
 
 import numpy as np
 
+_static_costmap_cache = None
+
 
 def compute_costmap(
     static_map: np.ndarray,
@@ -43,7 +45,35 @@ def compute_costmap(
       longer route, wasting time.
     """
     # TODO: Implement a function to compute a costmap from the static map by inflating obstacles.
-    return static_map.copy()
+    LETHAL_COST: int = 254
+    INFLATION_RADIUS: float = 3.0
+
+    # Obstacle coordinates
+    obs_r, obs_c = np.where(static_map > 0)
+    if obs_r.size == 0:
+        return np.zeros_like(static_map, dtype=np.uint8)
+
+    rows, cols = static_map.shape
+    r_grid, c_grid = np.mgrid[0:rows, 0:cols]
+
+    # Min Euclidean distance from each cell to nearest obstacle (chunked to save memory)
+    min_dist_sq = np.full((rows, cols), np.inf)
+    chunk = 500
+    for i in range(0, len(obs_r), chunk):
+        dr = r_grid[:, :, np.newaxis] - obs_r[i : i + chunk]
+        dc = c_grid[:, :, np.newaxis] - obs_c[i : i + chunk]
+        d_sq = dr * dr + dc * dc
+        np.minimum(min_dist_sq, d_sq.min(axis=2), out=min_dist_sq)
+    dist = np.sqrt(min_dist_sq)
+
+    # Build costmap
+    costmap = np.zeros((rows, cols), dtype=np.uint8)
+    costmap[static_map > 0] = LETHAL_COST
+
+    mask = (static_map == 0) & (dist < INFLATION_RADIUS)
+    costmap[mask] = (LETHAL_COST * (1.0 - dist[mask] / INFLATION_RADIUS)).round().astype(np.uint8)
+
+    return costmap
 
 
 def update_local_costmap(
@@ -93,4 +123,51 @@ def update_local_costmap(
       re-inflating the same area.
     """
     # TODO: Implement a function to update the global costmap with a local dynamic layer based on the lidar scan.
-    return static_map.copy()
+    # --- static layer (cached) ---
+    global _static_costmap_cache
+    map_id = id(static_map)
+    if _static_costmap_cache is None or _static_costmap_cache[0] != map_id:
+        _static_costmap_cache = (map_id, compute_costmap(static_map))
+    static_costmap = _static_costmap_cache[1]
+
+    # --- dynamic layer: lidar hits ---
+    rows, cols = static_map.shape
+    x, y = robot_pos
+
+    DYNAMIC_LETHAL: int = 254
+    DYNAMIC_RADIUS: float = 2.0
+
+    hit_r, hit_c = [], []
+    for i in range(lidar_num_rays):
+        d = lidar_scan[i]
+        if d >= lidar_range:
+            continue
+        angle = 2.0 * np.pi * i / lidar_num_rays
+        hx = x + d * np.cos(angle)
+        hy = y + d * np.sin(angle)
+        hr, hc = int(round(hy)), int(round(hx))
+        if 0 <= hr < rows and 0 <= hc < cols and static_map[hr, hc] == 0:
+            hit_r.append(hr)
+            hit_c.append(hc)
+
+    if not hit_r:
+        return static_costmap.copy()
+
+    # Inflate dynamic hits
+    hit_r = np.array(hit_r)
+    hit_c = np.array(hit_c)
+    r_grid, c_grid = np.mgrid[0:rows, 0:cols]
+    min_dist_sq = np.full((rows, cols), np.inf)
+    dr = r_grid[:, :, np.newaxis] - hit_r
+    dc = c_grid[:, :, np.newaxis] - hit_c
+    d_sq = dr * dr + dc * dc
+    np.minimum(min_dist_sq, d_sq.min(axis=2), out=min_dist_sq)
+    dist = np.sqrt(min_dist_sq)
+
+    dynamic_costmap = np.zeros((rows, cols), dtype=np.uint8)
+    for r, c in zip(hit_r, hit_c):
+        dynamic_costmap[r, c] = DYNAMIC_LETHAL
+    mask = (dynamic_costmap == 0) & (dist < DYNAMIC_RADIUS)
+    dynamic_costmap[mask] = (DYNAMIC_LETHAL * (1.0 - dist[mask] / DYNAMIC_RADIUS)).round().astype(np.uint8)
+
+    return np.maximum(static_costmap, dynamic_costmap)
