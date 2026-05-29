@@ -65,7 +65,7 @@ def local_plan(
     closest_idx = int(np.argmin(dists_sq))
 
     # 2. Walk forward from closest waypoint to find the look-ahead point
-    Ld = 2.0  # look-ahead radius (grid units)
+    Ld = 2  # look-ahead radius (grid units)
     look_ahead = global_path[-1]  # default to goal
     cum_dist = 0.0
     for i in range(closest_idx, len(global_path) - 1):
@@ -88,6 +88,6 @@ def local_plan(
     # 4. Speed: full speed far from goal, slow down when near
     goal = global_path[-1]
     remaining = ((goal[0] - x) ** 2 + (goal[1] - y) ** 2) ** 0.5
-    speed = min(max_speed, max(2.0, remaining))
+    speed = min(max_speed, remaining)
 
     return dx / dist * speed, dy / dist * speed

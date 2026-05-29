@@ -44,7 +44,7 @@ def global_plan(
     """
     # TODO: Implement path search on the costmap grid to find a path from start to goal.
     rows, cols = costmap.shape
-    LETHAL = 200  # treat cells with cost >= this as impassable
+    LETHAL = 100  # treat cells with cost >= this as impassable (robot radius ≈ 1.6)
 
     # Convert start / goal to grid cells
     sc, sr = int(round(start[0])), int(round(start[1]))
